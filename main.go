@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/eiannone/keyboard"
 )
 
 type sessionStats struct {
@@ -20,11 +22,14 @@ func main() {
 	fmt.Println("Session duration:", sessionDuration, "seconds.")
 
 	controlChannel := make(chan int)
+	sessionChannel := make(chan sessionStats)
 
 	go startTimer(sessionDuration, controlChannel)
+	go capture(sessionChannel, controlChannel)
 
-	<-controlChannel
-	fmt.Println("Done!")
+	stats := <-sessionChannel
+
+	fmt.Println("Total keys pressed:", stats.totalKeys)
 }
 
 func validateArguments(args []string) (int, int) {
@@ -61,4 +66,54 @@ func startTimer(seconds int, timeChannel chan int) {
 		<-timer.C
 		timeChannel <- 1
 	}()
+}
+
+func startSession(seconds int) {
+	timer := time.NewTimer(time.Duration(seconds * int(time.Second)))
+
+	fmt.Println("Session started!")
+	go func() {
+		<-timer.C
+		fmt.Println("Session ended!")
+	}()
+}
+
+func capture(c chan sessionStats, timerChannel chan int) {
+	stats := sessionStats{
+		totalKeys: 0,
+	}
+
+	startCapturing()
+	defer closeCapturing()
+
+	keysEvents, err := keyboard.GetKeys(10)
+	if err != nil {
+		panic(err)
+	}
+
+	for {
+		select {
+		case event := <-keysEvents:
+			if event.Err != nil {
+				panic(event.Err)
+			}
+
+			fmt.Printf("You pressed: rune %q, key %X\r\n", event.Rune, event.Key)
+			stats.totalKeys += 1
+
+		case <-timerChannel:
+			c <- stats
+			break
+		}
+	}
+}
+
+func startCapturing() {
+	if err := keyboard.Open(); err != nil {
+		panic(err)
+	}
+}
+
+func closeCapturing() {
+	_ = keyboard.Close()
 }
