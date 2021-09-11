@@ -21,13 +21,14 @@ func main() {
 	timerChannel := make(chan int)
 	tickerChannel := make(chan int)
 	statsChannel := make(chan sessionStats)
-	doneChannel := make(chan bool)
+	doneChannel := make(chan sessionStats)
 
 	go startTimer(sessionDuration, timerChannel)
 	go startInterval(time.Duration(intervalDuration), timerChannel, tickerChannel, statsChannel, doneChannel)
 	go capture(doneChannel, tickerChannel, statsChannel)
 
-	<-doneChannel
+	stats := <-doneChannel
+	fmt.Println("Total keys pressed:", stats.totalKeys)
 }
 
 func validateArguments(args []string) (int, int) {
@@ -66,10 +67,10 @@ func startTimer(seconds int, timerChannel chan int) {
 	}()
 }
 
-func startInterval(seconds time.Duration, timerChannel chan int, tickerChannel chan int, statsChannel chan sessionStats, doneChannel chan bool) {
-	// stats := sessionStats{
-	// 	totalKeys: 0,
-	// }
+func startInterval(seconds time.Duration, timerChannel chan int, tickerChannel chan int, statsChannel chan sessionStats, doneChannel chan sessionStats) {
+	sessionStats := sessionStats{
+		totalKeys: 0,
+	}
 
 	startTime := time.Now()
 	ticker := time.NewTicker(seconds * time.Second)
@@ -79,25 +80,33 @@ func startInterval(seconds time.Duration, timerChannel chan int, tickerChannel c
 			select {
 			case <-ticker.C:
 				tickerChannel <- 1
-				printKpm(statsChannel, startTime)
+
+				stats := <-statsChannel
+
+				sessionStats.totalKeys += stats.totalKeys
+				kps := calculateKps(startTime, sessionStats.totalKeys)
+
+				fmt.Println("Keys pressed during last interval:", stats.totalKeys)
+				fmt.Println("Keys per second:", kps)
 			case <-timerChannel:
 				tickerChannel <- 1
-				printKpm(statsChannel, startTime)
 
-				doneChannel <- true
+				stats := <-statsChannel
+
+				sessionStats.totalKeys += stats.totalKeys
+				kps := calculateKps(startTime, sessionStats.totalKeys)
+
+				fmt.Println("Keys pressed during last interval:", stats.totalKeys)
+				fmt.Println("Keys per second:", kps)
+
+				doneChannel <- sessionStats
 				break
 			}
 		}
 	}()
 }
 
-func printKpm(statsChannel chan sessionStats, startTime time.Time) {
-	stats := <-statsChannel
-	kpm := calculateKpm(startTime, stats.totalKeys)
-	fmt.Println("Keys per second:", kpm)
-}
-
-func calculateKpm(startTime time.Time, keys int) float64 {
+func calculateKps(startTime time.Time, keys int) float64 {
 	interval := -startTime.Sub(time.Now()).Seconds()
 	kpm := float64(keys) / interval
 
@@ -114,7 +123,7 @@ func startSession(seconds int) {
 	}()
 }
 
-func capture(doneChannel chan bool, tickerChannel chan int, statsChannel chan sessionStats) {
+func capture(doneChannel chan sessionStats, tickerChannel chan int, statsChannel chan sessionStats) {
 	stats := sessionStats{
 		totalKeys: 0,
 	}
@@ -137,6 +146,10 @@ func capture(doneChannel chan bool, tickerChannel chan int, statsChannel chan se
 			stats.totalKeys += 1
 		case <-tickerChannel:
 			statsChannel <- stats
+			stats = sessionStats{
+				totalKeys: 0,
+			}
+
 		case <-doneChannel:
 			break
 		}
