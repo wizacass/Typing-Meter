@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -15,21 +16,18 @@ type sessionStats struct {
 }
 
 func main() {
-
 	intervalDuration, sessionDuration := validateArguments(os.Args[1:])
 
-	fmt.Println("Interval duration:", intervalDuration, "seconds.")
-	fmt.Println("Session duration:", sessionDuration, "seconds.")
+	timerChannel := make(chan int)
+	tickerChannel := make(chan int)
+	statsChannel := make(chan sessionStats)
+	doneChannel := make(chan bool)
 
-	controlChannel := make(chan int)
-	sessionChannel := make(chan sessionStats)
+	go startTimer(sessionDuration, timerChannel)
+	go startInterval(time.Duration(intervalDuration), timerChannel, tickerChannel, statsChannel, doneChannel)
+	go capture(doneChannel, tickerChannel, statsChannel)
 
-	go startTimer(sessionDuration, controlChannel)
-	go capture(sessionChannel, controlChannel)
-
-	stats := <-sessionChannel
-
-	fmt.Println("Total keys pressed:", stats.totalKeys)
+	<-doneChannel
 }
 
 func validateArguments(args []string) (int, int) {
@@ -59,13 +57,51 @@ func atoi(value string) int {
 	return number
 }
 
-func startTimer(seconds int, timeChannel chan int) {
+func startTimer(seconds int, timerChannel chan int) {
 	timer := time.NewTimer(time.Duration(seconds * int(time.Second)))
 
 	go func() {
 		<-timer.C
-		timeChannel <- 1
+		timerChannel <- 1
 	}()
+}
+
+func startInterval(seconds time.Duration, timerChannel chan int, tickerChannel chan int, statsChannel chan sessionStats, doneChannel chan bool) {
+	// stats := sessionStats{
+	// 	totalKeys: 0,
+	// }
+
+	startTime := time.Now()
+	ticker := time.NewTicker(seconds * time.Second)
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				tickerChannel <- 1
+				printKpm(statsChannel, startTime)
+			case <-timerChannel:
+				tickerChannel <- 1
+				printKpm(statsChannel, startTime)
+
+				doneChannel <- true
+				break
+			}
+		}
+	}()
+}
+
+func printKpm(statsChannel chan sessionStats, startTime time.Time) {
+	stats := <-statsChannel
+	kpm := calculateKpm(startTime, stats.totalKeys)
+	fmt.Println("Keys per second:", kpm)
+}
+
+func calculateKpm(startTime time.Time, keys int) float64 {
+	interval := -startTime.Sub(time.Now()).Seconds()
+	kpm := float64(keys) / interval
+
+	return math.Round(kpm*100) / 100
 }
 
 func startSession(seconds int) {
@@ -78,7 +114,7 @@ func startSession(seconds int) {
 	}()
 }
 
-func capture(c chan sessionStats, timerChannel chan int) {
+func capture(doneChannel chan bool, tickerChannel chan int, statsChannel chan sessionStats) {
 	stats := sessionStats{
 		totalKeys: 0,
 	}
@@ -98,11 +134,10 @@ func capture(c chan sessionStats, timerChannel chan int) {
 				panic(event.Err)
 			}
 
-			fmt.Printf("You pressed: rune %q, key %X\r\n", event.Rune, event.Key)
 			stats.totalKeys += 1
-
-		case <-timerChannel:
-			c <- stats
+		case <-tickerChannel:
+			statsChannel <- stats
+		case <-doneChannel:
 			break
 		}
 	}
