@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strconv"
 	"time"
-
-	"github.com/eiannone/keyboard"
 )
 
 type sessionStats struct {
@@ -16,16 +13,9 @@ type sessionStats struct {
 	kps       float64
 }
 
-func newSessionStats() sessionStats {
-	return sessionStats{
-		totalKeys: 0,
-		keys:      make(map[rune]int),
-		kps:       0,
-	}
-}
-
 func main() {
 	keystrokes := 10
+
 	intervalDuration, sessionDuration := validateArguments(os.Args[1:])
 
 	timerChannel := make(chan bool)
@@ -56,16 +46,6 @@ func validateArguments(args []string) (int, int) {
 	}
 
 	return intervalDuration, sessionDuration
-}
-
-func atoi(value string) int {
-	number, err := strconv.Atoi(value)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return number
 }
 
 func startTimer(seconds int, timerChannel chan bool) {
@@ -108,51 +88,11 @@ func analyzeInterval(startTime time.Time, sessionStats *sessionStats, tickerChan
 	printIntervalStats(stats, sessionStats.kps)
 }
 
-func mergeStats(from sessionStats, to *sessionStats) {
-	for key := range from.keys {
-		mergeKey(key, from, to)
-	}
-	to.totalKeys += from.totalKeys
-}
-
-func mergeKey(key rune, from sessionStats, to *sessionStats) {
-	if _, ok := to.keys[key]; ok {
-		to.keys[key] += from.keys[key]
-	} else {
-		to.keys[key] = from.keys[key]
-	}
-}
-
 func calculateKps(startTime time.Time, keys int) float64 {
 	interval := -startTime.Sub(time.Now()).Seconds()
 	kps := float64(keys) / interval
 
 	return math.Round(kps*100) / 100
-}
-
-func printIntervalStats(stats sessionStats, kps float64) {
-	fmt.Println("\n--- Interval stats ---")
-	printStats(stats, kps)
-	fmt.Println()
-}
-
-func printStats(stats sessionStats, kps float64) {
-	fmt.Println("\nKeys pressed during last interval:", stats.totalKeys)
-	printKeys(stats.keys)
-	fmt.Println("\nCurrent Session typing speed:", kps, "kps")
-}
-
-func printKeys(keys map[rune]int) {
-	if len(keys) == 0 {
-		fmt.Println("No keys were pressed!")
-	} else {
-		popularKeys := findMostPolularKeys(keys, 3)
-
-		fmt.Println("Most popular key occurences:")
-		for key, amount := range popularKeys {
-			fmt.Printf("Key: %q: %d\n", key, amount)
-		}
-	}
 }
 
 func findMostPolularKeys(keys map[rune]int, amount int) map[rune]int {
@@ -180,69 +120,4 @@ func findMostPopularKey(keys map[rune]int, ignoreKeys map[rune]int) rune {
 	}
 
 	return popularKey
-}
-
-func getMapKey(keys map[rune]int) rune {
-	for key := range keys {
-		return key
-	}
-
-	return rune(0)
-}
-
-func printSessionStats(stats sessionStats) {
-	fmt.Println("\n--- Session stats ---")
-	fmt.Println("\nKeys pressed during Session:", stats.totalKeys)
-	printKeys(stats.keys)
-	fmt.Println("\nSession typing speed:", stats.kps, "kps")
-}
-
-func capture(keystrokes int, doneChannel chan sessionStats, tickerChannel chan bool, statsChannel chan sessionStats) {
-	stats := newSessionStats()
-
-	startCapturing()
-	defer closeCapturing()
-
-	keysEvents, err := keyboard.GetKeys(keystrokes)
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		select {
-		case event := <-keysEvents:
-			if event.Err != nil {
-				panic(event.Err)
-			}
-
-			registerKey(event.Rune, &stats)
-
-		case <-tickerChannel:
-			statsChannel <- stats
-			stats = newSessionStats()
-
-		case <-doneChannel:
-			break
-		}
-	}
-}
-
-func startCapturing() {
-	if err := keyboard.Open(); err != nil {
-		panic(err)
-	}
-}
-
-func closeCapturing() {
-	_ = keyboard.Close()
-}
-
-func registerKey(key rune, stats *sessionStats) {
-	if _, ok := stats.keys[key]; ok {
-		stats.keys[key]++
-	} else {
-		stats.keys[key] = 1
-	}
-
-	stats.totalKeys++
 }
