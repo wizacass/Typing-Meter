@@ -146,11 +146,48 @@ func printKeys(keys map[rune]int) {
 	if len(keys) == 0 {
 		fmt.Println("No keys were pressed!")
 	} else {
-		fmt.Println("Key occurences:")
-		for key, amount := range keys {
+		popularKeys := findMostPolularKeys(keys, 3)
+
+		fmt.Println("Most popular key occurences:")
+		for key, amount := range popularKeys {
 			fmt.Printf("Key: %q: %d\n", key, amount)
 		}
 	}
+}
+
+func findMostPolularKeys(keys map[rune]int, amount int) map[rune]int {
+	if len(keys) <= amount {
+		return keys
+	}
+
+	popularKeys := make(map[rune]int)
+
+	for i := 0; i < amount; i++ {
+		popularKey := findMostPopularKey(keys, popularKeys)
+		popularKeys[popularKey] = keys[popularKey]
+	}
+
+	return popularKeys
+}
+
+func findMostPopularKey(keys map[rune]int, ignoreKeys map[rune]int) rune {
+	popularKey := getMapKey(keys)
+	for key, amount := range keys {
+		_, contains := ignoreKeys[key]
+		if amount > keys[popularKey] && !contains {
+			popularKey = key
+		}
+	}
+
+	return popularKey
+}
+
+func getMapKey(keys map[rune]int) rune {
+	for key := range keys {
+		return key
+	}
+
+	return rune(0)
 }
 
 func printSessionStats(stats sessionStats) {
