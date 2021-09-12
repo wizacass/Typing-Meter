@@ -9,8 +9,13 @@ import (
 
 type sessionStats struct {
 	totalKeys int
-	keys      map[rune]int
+	keys      []keyOccurence
 	kps       float64
+}
+
+type keyOccurence struct {
+	key       rune
+	occurence int
 }
 
 func main() {
@@ -93,31 +98,4 @@ func calculateKps(startTime time.Time, keys int) float64 {
 	kps := float64(keys) / interval
 
 	return math.Round(kps*100) / 100
-}
-
-func findMostPolularKeys(keys map[rune]int, amount int) map[rune]int {
-	if len(keys) <= amount {
-		return keys
-	}
-
-	popularKeys := make(map[rune]int)
-
-	for i := 0; i < amount; i++ {
-		popularKey := findMostPopularKey(keys, popularKeys)
-		popularKeys[popularKey] = keys[popularKey]
-	}
-
-	return popularKeys
-}
-
-func findMostPopularKey(keys map[rune]int, ignoreKeys map[rune]int) rune {
-	popularKey := getMapKey(keys)
-	for key, amount := range keys {
-		_, contains := ignoreKeys[key]
-		if amount > keys[popularKey] && !contains {
-			popularKey = key
-		}
-	}
-
-	return popularKey
 }

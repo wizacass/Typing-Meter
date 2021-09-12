@@ -14,15 +14,15 @@ func printStats(stats sessionStats, kps float64) {
 	fmt.Println("\nCurrent Session typing speed:", kps, "kps")
 }
 
-func printKeys(keys map[rune]int) {
+func printKeys(keys []keyOccurence) {
 	if len(keys) == 0 {
 		fmt.Println("No keys were pressed!")
 	} else {
 		popularKeys := findMostPolularKeys(keys, 3)
 
 		fmt.Println("Most popular key occurences:")
-		for key, amount := range popularKeys {
-			fmt.Printf("Key: %q: %d\n", key, amount)
+		for _, keyInfo := range popularKeys {
+			fmt.Printf("Key: %q: %d\n", keyInfo.key, keyInfo.occurence)
 		}
 	}
 }

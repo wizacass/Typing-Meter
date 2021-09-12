@@ -1,12 +1,22 @@
 package main
 
-import "strconv"
+import (
+	"sort"
+	"strconv"
+)
 
 func newSessionStats() sessionStats {
 	return sessionStats{
 		totalKeys: 0,
-		keys:      make(map[rune]int),
+		keys:      make([]keyOccurence, 0),
 		kps:       0,
+	}
+}
+
+func newKeyOccurence(key rune) keyOccurence {
+	return keyOccurence{
+		key:       key,
+		occurence: 1,
 	}
 }
 
@@ -20,35 +30,50 @@ func atoi(value string) int {
 	return number
 }
 
+func registerKey(key rune, stats *sessionStats) {
+	if i := findKey(key, stats.keys); i >= 0 {
+		stats.keys[i].occurence++
+	} else {
+		occurence := newKeyOccurence(key)
+		stats.keys = append(stats.keys, occurence)
+	}
+
+	stats.totalKeys++
+}
+
 func mergeStats(from sessionStats, to *sessionStats) {
-	for key := range from.keys {
-		mergeKey(key, from, to)
+	for _, occurence := range from.keys {
+		mergeKey(occurence, from, to)
 	}
 	to.totalKeys += from.totalKeys
 }
 
-func mergeKey(key rune, from sessionStats, to *sessionStats) {
-	if _, ok := to.keys[key]; ok {
-		to.keys[key] += from.keys[key]
+func mergeKey(occurence keyOccurence, from sessionStats, to *sessionStats) {
+	if i := findKey(occurence.key, to.keys); i >= 0 {
+		to.keys[i].occurence += occurence.occurence
 	} else {
-		to.keys[key] = from.keys[key]
+		to.keys = append(to.keys, occurence)
 	}
 }
 
-func getMapKey(keys map[rune]int) rune {
-	for key := range keys {
-		return key
+func findKey(key rune, keys []keyOccurence) int {
+	for i, keyInfo := range keys {
+		if key == keyInfo.key {
+			return i
+		}
 	}
 
-	return rune(0)
+	return -1
 }
 
-func registerKey(key rune, stats *sessionStats) {
-	if _, ok := stats.keys[key]; ok {
-		stats.keys[key]++
-	} else {
-		stats.keys[key] = 1
+func findMostPolularKeys(occurences []keyOccurence, amount int) []keyOccurence {
+	sort.Slice(occurences, func(i, j int) bool {
+		return occurences[i].occurence > occurences[j].occurence
+	})
+
+	if len(occurences) <= amount {
+		return occurences
 	}
 
-	stats.totalKeys++
+	return occurences[:amount]
 }
