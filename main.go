@@ -11,8 +11,17 @@ import (
 )
 
 type sessionStats struct {
-	totalKeys       int
-	mostPopularKeys [3]byte
+	totalKeys int
+	keys      map[rune]int
+	kps       float64
+}
+
+func newSessionStats() sessionStats {
+	return sessionStats{
+		totalKeys: 0,
+		keys:      make(map[rune]int),
+		kps:       0,
+	}
 }
 
 func main() {
@@ -29,7 +38,7 @@ func main() {
 	go capture(keystrokes, doneChannel, tickerChannel, statsChannel)
 
 	stats := <-doneChannel
-	fmt.Println("Total keys pressed:", stats.totalKeys)
+	printSessionStats(stats)
 }
 
 func validateArguments(args []string) (int, int) {
@@ -69,9 +78,7 @@ func startTimer(seconds int, timerChannel chan bool) {
 }
 
 func startInterval(seconds time.Duration, timerChannel chan bool, tickerChannel chan bool, statsChannel chan sessionStats, doneChannel chan sessionStats) {
-	sessionStats := sessionStats{
-		totalKeys: 0,
-	}
+	sessionStats := newSessionStats()
 
 	startTime := time.Now()
 	ticker := time.NewTicker(seconds * time.Second)
@@ -95,28 +102,66 @@ func analyzeInterval(startTime time.Time, sessionStats *sessionStats, tickerChan
 	tickerChannel <- true
 	stats := <-statsChannel
 
-	sessionStats.totalKeys += stats.totalKeys
-	kps := calculateKps(startTime, sessionStats.totalKeys)
+	mergeStats(stats, sessionStats)
+	sessionStats.kps = calculateKps(startTime, sessionStats.totalKeys)
 
-	printIntervalStats(*sessionStats, kps)
+	printIntervalStats(stats, sessionStats.kps)
+}
+
+func mergeStats(from sessionStats, to *sessionStats) {
+	for key := range from.keys {
+		mergeKey(key, from, to)
+	}
+	to.totalKeys += from.totalKeys
+}
+
+func mergeKey(key rune, from sessionStats, to *sessionStats) {
+	if _, ok := to.keys[key]; ok {
+		to.keys[key] += from.keys[key]
+	} else {
+		to.keys[key] = from.keys[key]
+	}
 }
 
 func calculateKps(startTime time.Time, keys int) float64 {
 	interval := -startTime.Sub(time.Now()).Seconds()
-	kpm := float64(keys) / interval
+	kps := float64(keys) / interval
 
-	return math.Round(kpm*100) / 100
+	return math.Round(kps*100) / 100
 }
 
 func printIntervalStats(stats sessionStats, kps float64) {
-	fmt.Println("Keys pressed during last interval:", stats.totalKeys)
-	fmt.Println("Keys per second:", kps)
+	fmt.Println("\n--- Interval stats ---")
+	printStats(stats, kps)
+	fmt.Println()
+}
+
+func printStats(stats sessionStats, kps float64) {
+	fmt.Println("\nKeys pressed during last interval:", stats.totalKeys)
+	printKeys(stats.keys)
+	fmt.Println("\nCurrent Session typing speed:", kps, "kps")
+}
+
+func printKeys(keys map[rune]int) {
+	if len(keys) == 0 {
+		fmt.Println("No keys were pressed!")
+	} else {
+		fmt.Println("Key occurences:")
+		for key, amount := range keys {
+			fmt.Printf("Key: %q: %d\n", key, amount)
+		}
+	}
+}
+
+func printSessionStats(stats sessionStats) {
+	fmt.Println("\n--- Session stats ---")
+	fmt.Println("\nKeys pressed during Session:", stats.totalKeys)
+	printKeys(stats.keys)
+	fmt.Println("\nSession typing speed:", stats.kps, "kps")
 }
 
 func capture(keystrokes int, doneChannel chan sessionStats, tickerChannel chan bool, statsChannel chan sessionStats) {
-	stats := sessionStats{
-		totalKeys: 0,
-	}
+	stats := newSessionStats()
 
 	startCapturing()
 	defer closeCapturing()
@@ -133,12 +178,11 @@ func capture(keystrokes int, doneChannel chan sessionStats, tickerChannel chan b
 				panic(event.Err)
 			}
 
-			stats.totalKeys += 1
+			registerKey(event.Rune, &stats)
+
 		case <-tickerChannel:
 			statsChannel <- stats
-			stats = sessionStats{
-				totalKeys: 0,
-			}
+			stats = newSessionStats()
 
 		case <-doneChannel:
 			break
@@ -154,4 +198,14 @@ func startCapturing() {
 
 func closeCapturing() {
 	_ = keyboard.Close()
+}
+
+func registerKey(key rune, stats *sessionStats) {
+	if _, ok := stats.keys[key]; ok {
+		stats.keys[key]++
+	} else {
+		stats.keys[key] = 1
+	}
+
+	stats.totalKeys++
 }
