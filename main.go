@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"os"
-	"time"
 )
 
 type sessionStats struct {
@@ -29,7 +27,7 @@ func main() {
 	doneChannel := make(chan sessionStats)
 
 	go startTimer(sessionDuration, timerChannel)
-	go startInterval(time.Duration(intervalDuration), timerChannel, tickerChannel, statsChannel, doneChannel)
+	go startInterval(intervalDuration, timerChannel, tickerChannel, statsChannel, doneChannel)
 	go capture(keystrokes, doneChannel, tickerChannel, statsChannel)
 
 	stats := <-doneChannel
@@ -51,51 +49,4 @@ func validateArguments(args []string) (int, int) {
 	}
 
 	return intervalDuration, sessionDuration
-}
-
-func startTimer(seconds int, timerChannel chan bool) {
-	timer := time.NewTimer(time.Duration(seconds * int(time.Second)))
-
-	go func() {
-		<-timer.C
-		timerChannel <- true
-	}()
-}
-
-func startInterval(seconds time.Duration, timerChannel chan bool, tickerChannel chan bool, statsChannel chan sessionStats, doneChannel chan sessionStats) {
-	sessionStats := newSessionStats()
-
-	startTime := time.Now()
-	ticker := time.NewTicker(seconds * time.Second)
-
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				analyzeInterval(startTime, &sessionStats, tickerChannel, statsChannel)
-			case <-timerChannel:
-				analyzeInterval(startTime, &sessionStats, tickerChannel, statsChannel)
-
-				doneChannel <- sessionStats
-				break
-			}
-		}
-	}()
-}
-
-func analyzeInterval(startTime time.Time, sessionStats *sessionStats, tickerChannel chan bool, statsChannel chan sessionStats) {
-	tickerChannel <- true
-	stats := <-statsChannel
-
-	mergeStats(stats, sessionStats)
-	sessionStats.kps = calculateKps(startTime, sessionStats.totalKeys)
-
-	printIntervalStats(stats, sessionStats.kps)
-}
-
-func calculateKps(startTime time.Time, keys int) float64 {
-	interval := -startTime.Sub(time.Now()).Seconds()
-	kps := float64(keys) / interval
-
-	return math.Round(kps*100) / 100
 }
